@@ -22,7 +22,7 @@ After the next desktop login, a background instance waits for the tested control
 ## Connect the physical pad
 
 1. Plug in the 12-button/2-knob controller.
-2. Refresh the device list and choose its Linux input-event device.
+2. Refresh the device list. It now shows keyboard-capable endpoints only; the tested pad is marked **★ THIS PAD** and includes USB ID `1189:8840` plus its event number.
 3. Click Connect.
 4. Select a logical control such as button_01 or knob_1_cw.
 5. Click Learn selected, then press or turn that physical control.
@@ -33,6 +33,8 @@ Linux may restrict access to /dev/input/event*. Check permissions with ls -l /de
 If you see **Device or resource busy**, an older app/monitor process still has the controller grabbed. Close that copy or stop its process once, update the app, and relaunch; the current version prevents duplicate app instances and raises the window already listening to the pad.
 
 This controller exposes its 12 buttons as A–L keyboard events and knob input as number-key events. Use **Learn selected** once per knob direction to capture the exact event. Other controllers may expose relative events instead.
+
+The two knob widgets now sit in the assignment panel, alongside the control/action menus. The wider panel gives the control and device dropdowns more room; each device label includes its USB ID and event node so similarly named endpoints are distinguishable.
 
 When a button is touched, its matching on-screen key lights even before an action is assigned. An unknown/unbound input is also shown in the status line; choose the target control, click **Learn selected**, and press it again to bind it.
 
