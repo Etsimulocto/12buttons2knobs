@@ -1,7 +1,8 @@
 import tempfile
 import unittest
 from pathlib import Path
-from app import fresh_profile, load_profile, save_profile, perform_action
+from app import (fresh_profile, load_profile, save_profile, perform_action,
+                 fresh_settings, load_settings, save_settings)
 
 class ProfileTests(unittest.TestCase):
     def test_profile_round_trip(self):
@@ -22,6 +23,14 @@ class ProfileTests(unittest.TestCase):
     def test_rejects_unsafe_url_scheme(self):
         with self.assertRaises(ValueError):
             perform_action({"type": "open_url", "url": "file:///etc/passwd"})
+
+    def test_settings_round_trip(self):
+        settings = fresh_settings()
+        settings.update(theme="Light", accent="Teal", window_size="Large", geometry="1280x820+10+20", autostart=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "settings.json"
+            save_settings(settings, path)
+            self.assertEqual(load_settings(path), settings)
 
 if __name__ == "__main__":
     unittest.main()
