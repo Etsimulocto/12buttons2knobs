@@ -32,7 +32,7 @@ def fresh_profile():
     return {"name": "Default", "labels": {}, "actions": {}, "input_device": "", "bindings": {}}
 
 def fresh_settings():
-    return {"theme": "Midnight", "accent": "Violet", "window_size": "Standard", "geometry": "", "autostart": False}
+    return {"theme": "Midnight", "accent": "Violet", "window_size": "Standard", "geometry": "", "autostart": True}
 
 def load_settings(path=SETTINGS_PATH):
     try:
@@ -182,6 +182,9 @@ class MacroPadApp:
     def __init__(self, root, background=False):
         self.root = root
         self.settings = load_settings()
+        if self.settings["autostart"]:
+            try: set_autostart(True)
+            except OSError: pass
         self.background = background
         self._was_connected = False
         root.title("12buttons2knobs · Pi Control Deck")
