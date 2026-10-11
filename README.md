@@ -12,6 +12,7 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 - Highlights physical presses on the on-screen deck and reports input events that still need a binding.
 - Offers Midnight, Light, and Graphite themes, five accent colors, resizable windows, and launch-size presets.
 - Installs a per-user login monitor on first launch; it opens and connects the deck when the verified controller is plugged in.
+- Uses a single running instance so launching it again raises the existing window instead of grabbing the controller twice.
 - Stores the active profile in the current user's configuration folder.
 
 A useful first mapping is a button that copies the latest Skycam image into a selected folder. Other buttons can launch tools, run scripts, or open project links. Knob turns and presses can each run their own action.
