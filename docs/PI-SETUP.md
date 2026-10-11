@@ -9,7 +9,15 @@ If Tkinter is missing, install it with: sudo apt install python3-tk
 
 Install the optional input reader with: sudo apt install python3-evdev
 
-Start the app from the repository directory with: python3 app.py
+Start the app from the repository directory with: `python3 app.py`
+
+## Open automatically when the controller is plugged in
+
+1. Start the app once with `python3 app.py`.
+2. Open **Appearance / startup…**.
+3. Enable **Start monitor at login; open deck when pad is plugged in** and click **Apply**.
+
+This adds a per-user desktop autostart entry. After the next desktop login, a background instance waits for the tested controller USB ID `1189:8840`; when it appears, the app window opens and connects to its keyboard input endpoint. To disable it, clear the same checkbox and click **Apply**. The app also detects and connects to the controller when launched normally.
 
 ## Connect the physical pad
 
@@ -22,7 +30,9 @@ Start the app from the repository directory with: python3 app.py
 
 Linux may restrict access to /dev/input/event*. Check permissions with ls -l /dev/input/event*. Do not run the whole GUI as root. If access is denied, use the distro's input group or a device-specific udev rule, then log out and back in. Device paths can change after reconnecting.
 
-Some controllers expose knob turns as key presses; others use relative events. Learn mode records the event it receives. If the controls do not produce events, collect evtest output and add a controller-specific adapter.
+This controller exposes its 12 buttons as A–L keyboard events and knob input as number-key events. Use **Learn selected** once per knob direction to capture the exact event. Other controllers may expose relative events instead.
+
+The **Appearance / startup…** window offers Midnight, Light, and Graphite themes; five accent choices; Compact, Standard, Large, and Maximized launch sizes. The main window can also be resized directly, and its last size is saved.
 
 ## Profile storage
 
