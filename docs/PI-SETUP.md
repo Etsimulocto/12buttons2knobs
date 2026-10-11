@@ -32,6 +32,8 @@ Linux may restrict access to /dev/input/event*. Check permissions with ls -l /de
 
 This controller exposes its 12 buttons as A–L keyboard events and knob input as number-key events. Use **Learn selected** once per knob direction to capture the exact event. Other controllers may expose relative events instead.
 
+When a button is touched, its matching on-screen key lights even before an action is assigned. An unknown/unbound input is also shown in the status line; choose the target control, click **Learn selected**, and press it again to bind it.
+
 The **Appearance / startup…** window offers Midnight, Light, and Graphite themes; five accent choices; Compact, Standard, Large, and Maximized launch sizes. The main window can also be resized directly, and its last size is saved.
 
 ## Profile storage
