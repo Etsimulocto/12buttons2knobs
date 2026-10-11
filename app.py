@@ -12,6 +12,9 @@ CONFIG_PATH = CONFIG_DIR / "profile.json"
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
 AUTOSTART_PATH = Path.home() / ".config" / "autostart" / f"{APP_NAME}.desktop"
 PAD_USB_ID = (0x1189, 0x8840)
+# Codes reported by evtest for this pad's A–L button sequence.
+PAD_BUTTON_CODES = (30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38)
+PAD_BUTTON_NAMES = ("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L")
 WINDOW_SIZES = {"Compact": "920x640", "Standard": "1100x740", "Large": "1320x860", "Maximized": "1100x740"}
 THEMES = {
     "Midnight": {"bg": "#101018", "panel": "#1a1a27", "fg": "#ececf4", "muted": "#a8a6bd", "key": "#d4d1db", "keyfg": "#17151f"},
@@ -170,6 +173,8 @@ class EvdevReader:
                     if self.stop_event.is_set(): break
                     if event.type == evdev.ecodes.EV_KEY and event.value == 1:
                         self.output.put(("input", f"key:{event.code}"))
+                    elif event.type == evdev.ecodes.EV_KEY and event.value == 0:
+                        self.output.put(("release", f"key:{event.code}"))
                     elif event.type == evdev.ecodes.EV_REL and event.value:
                         self.output.put(("input", f"rel:{event.code}:{'+' if event.value > 0 else '-'}"))
             except (OSError, PermissionError) as exc:
@@ -207,6 +212,7 @@ class MacroPadApp:
         self.learn_armed = False
         self.status = tk.StringVar(value="Ready · assign an action, then click a control to test it.")
         self.keys = {}
+        self.control_widgets = {}
         self.knob_canvases = []
         self._style()
         self._build()
@@ -273,6 +279,7 @@ class MacroPadApp:
                            command=lambda c=control: self._activate(c))
             b.grid(row=row, column=col, padx=6, pady=7, sticky="nsew")
             self.keys[control] = b
+            self.control_widgets[control] = b
             keys.grid_columnconfigure(col, weight=1, uniform="key")
             keys.grid_rowconfigure(row, weight=1, uniform="key")
         knobs = ttk.Frame(area, style="Panel.TFrame"); knobs.pack(side="right", fill="y")
@@ -291,7 +298,10 @@ class MacroPadApp:
         self.knob_canvases.append(c)
         row = ttk.Frame(box, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
         for text, suffix in (("◀", "ccw"), ("Press", "press"), ("▶", "cw")):
-            ttk.Button(row, text=text, command=lambda k=f"knob_{n}_{suffix}": self._activate(k)).pack(side="left", padx=2)
+            control = f"knob_{n}_{suffix}"
+            button = ttk.Button(row, text=text, command=lambda k=control: self._activate(k))
+            button.pack(side="left", padx=2)
+            self.control_widgets[control] = button
 
     def _build_editor(self):
         ttk.Label(self.editor, text="ASSIGN CONTROL", style="Panel.TLabel",
@@ -479,18 +489,54 @@ class MacroPadApp:
             self.status.set("Choose and connect the physical input first."); return
         self.learn_armed = True
         self.status.set(f"Learning {CONTROL_LABELS[self.control.get()]}: press or turn it now.")
+
+    def _light_control(self, control, held=True, timed=False):
+        widget = self.control_widgets.get(control)
+        if not widget:
+            return
+        if held:
+            widget.state(["pressed"])
+            if timed:
+                self.root.after(240, lambda w=widget: w.state(["!pressed"]))
+        else:
+            widget.state(["!pressed"])
+
+    @staticmethod
+    def _known_button(value):
+        if not value.startswith("key:"):
+            return None
+        try:
+            index = PAD_BUTTON_CODES.index(int(value.split(":", 1)[1]))
+        except (ValueError, IndexError):
+            return None
+        return f"button_{index + 1:02d}"
     def _poll(self):
         try:
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == "error": self.status.set(value)
+                elif kind == "release":
+                    control = self.profile["bindings"].get(value)
+                    if control not in CONTROLS: control = self._known_button(value)
+                    if control in CONTROLS: self._light_control(control, held=False)
                 elif self.learn_armed:
                     self.profile["bindings"][value] = self.control.get()
                     self.learn_armed = False; self._save(True)
+                    self._light_control(self.control.get())
                     self.status.set(f"Bound {value} to {CONTROL_LABELS[self.control.get()]}.")
                 else:
                     control = self.profile["bindings"].get(value)
-                    if control in CONTROLS: self._run(control)
+                    if control in CONTROLS:
+                        self._light_control(control, timed=value.startswith("rel:"))
+                        self._run(control)
+                    else:
+                        hinted = self._known_button(value)
+                        if hinted:
+                            self._light_control(hinted)
+                            index = int(hinted[-2:]) - 1
+                            self.status.set(f"Detected Button {index + 1:02d} (key {PAD_BUTTON_NAMES[index]}). Select it and click Learn selected to bind it.")
+                        else:
+                            self.status.set(f"Detected {value}, but it is unassigned. Select a control and click Learn selected.")
         except queue.Empty: pass
         self.root.after(60, self._poll)
     def close(self):
