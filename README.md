@@ -10,8 +10,10 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 - Includes on-screen controls so assignments can be tested before the physical pad is connected.
 - Reads Linux input events with evdev and has a learn mode to map physical controls to app controls.
 - Highlights physical presses on the on-screen deck and reports input events that still need a binding.
+- Shows a live, copyable input/action/error log below the physical-device selector; it keeps only the latest 10 entries in memory.
 - Offers Midnight, Light, and Graphite themes, five accent colors, resizable windows, and launch-size presets.
-- Combines the knob controls and assignment editor in a wider panel; the USB list filters out non-keyboard endpoints and labels the tested pad.
+- Combines both knobs and the assignment editor in a wider, scrollable panel so the second knob and lower controls remain reachable.
+- Lists all evdev endpoints with event types, USB IDs, and event nodes; the tested pad endpoint is marked. The live log reports events from the connected endpoint.
 - Installs a per-user login monitor on first launch; it opens and connects the deck when the verified controller is plugged in.
 - Uses a single running instance so launching it again raises the existing window instead of grabbing the controller twice.
 - Stores the active profile in the current user's configuration folder.
@@ -30,6 +32,8 @@ Run the app from the project folder:
     python3 app.py
 
 The UI can be explored without the physical controller. To map hardware, plug in the pad, refresh the input-device list, select it, and click Connect. Select a logical control, click Learn selected, then press or turn the matching control on the pad.
+
+The **Live input / action log** below Physical USB Input records key presses/releases, relative and absolute events, learn/bind operations, assignments, action results, and errors. **Copy last 10** puts its current entries on the clipboard for sharing. The log is capped at ten lines; it monitors the endpoint selected with Connect.
 
 Open **Appearance / startup…** to change the theme, accent, or launch size. The first app launch adds a desktop autostart entry for the current user; after login, the app waits in the background and opens when the pad is connected. Turn off **Start monitor at login** there to remove the entry. The pad is identified by USB vendor/product `1189:8840`.
 
