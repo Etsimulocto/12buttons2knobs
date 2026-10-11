@@ -11,6 +11,7 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 - Reads Linux input events with evdev and has a learn mode to map physical controls to app controls.
 - Highlights physical presses on the on-screen deck and reports input events that still need a binding.
 - Offers Midnight, Light, and Graphite themes, five accent colors, resizable windows, and launch-size presets.
+- Combines the knob controls and assignment editor in a wider panel; the USB list filters out non-keyboard endpoints and labels the tested pad.
 - Installs a per-user login monitor on first launch; it opens and connects the deck when the verified controller is plugged in.
 - Uses a single running instance so launching it again raises the existing window instead of grabbing the controller twice.
 - Stores the active profile in the current user's configuration folder.
