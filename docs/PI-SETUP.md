@@ -14,10 +14,10 @@ Start the app from the repository directory with: `python3 app.py`
 ## Open automatically when the controller is plugged in
 
 1. Start the app once with `python3 app.py`.
-2. Open **Appearance / startup…**.
-3. Enable **Start monitor at login; open deck when pad is plugged in** and click **Apply**.
+2. The app installs its per-user desktop autostart entry automatically.
+3. Open **Appearance / startup…** if you want to disable or restore that behavior.
 
-This adds a per-user desktop autostart entry. After the next desktop login, a background instance waits for the tested controller USB ID `1189:8840`; when it appears, the app window opens and connects to its keyboard input endpoint. To disable it, clear the same checkbox and click **Apply**. The app also detects and connects to the controller when launched normally.
+After the next desktop login, a background instance waits for the tested controller USB ID `1189:8840`; when it appears, the app window opens and connects to its keyboard input endpoint. To disable it, clear **Start monitor at login; open deck when pad is plugged in** and click **Apply**. The app also detects and connects to the controller when launched normally.
 
 ## Connect the physical pad
 
