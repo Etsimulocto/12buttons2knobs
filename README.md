@@ -10,7 +10,7 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 - Includes on-screen controls so assignments can be tested before the physical pad is connected.
 - Reads Linux input events with evdev and has a learn mode to map physical controls to app controls.
 - Offers Midnight, Light, and Graphite themes, five accent colors, resizable windows, and launch-size presets.
-- Can install a per-user login monitor that opens and connects the deck when the verified controller is plugged in.
+- Installs a per-user login monitor on first launch; it opens and connects the deck when the verified controller is plugged in.
 - Stores the active profile in the current user's configuration folder.
 
 A useful first mapping is a button that copies the latest Skycam image into a selected folder. Other buttons can launch tools, run scripts, or open project links. Knob turns and presses can each run their own action.
@@ -28,7 +28,7 @@ Run the app from the project folder:
 
 The UI can be explored without the physical controller. To map hardware, plug in the pad, refresh the input-device list, select it, and click Connect. Select a logical control, click Learn selected, then press or turn the matching control on the pad.
 
-Open **Appearance / startup…** to change the theme, accent, or launch size. Enable **Start monitor at login** to have the app wait in the background and open when the pad is connected. This setting creates a desktop autostart entry for the current user; the pad is identified by USB vendor/product `1189:8840`.
+Open **Appearance / startup…** to change the theme, accent, or launch size. The first app launch adds a desktop autostart entry for the current user; after login, the app waits in the background and opens when the pad is connected. Turn off **Start monitor at login** there to remove the entry. The pad is identified by USB vendor/product `1189:8840`.
 
 See [Raspberry Pi setup](docs/PI-SETUP.md) for permissions and device troubleshooting, and [assignment ideas](docs/ASSIGNMENTS.md) for examples.
 
