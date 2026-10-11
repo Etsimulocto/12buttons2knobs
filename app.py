@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """12buttons2knobs: Raspberry Pi macro-pad dashboard and assignment app."""
 from __future__ import annotations
-import argparse, json, os, queue, shlex, shutil, subprocess, threading, webbrowser
+import argparse, fcntl, json, os, queue, shlex, shutil, socket, subprocess, threading, time, webbrowser
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -11,6 +11,8 @@ CONFIG_DIR = Path.home() / ".config" / APP_NAME
 CONFIG_PATH = CONFIG_DIR / "profile.json"
 SETTINGS_PATH = CONFIG_DIR / "settings.json"
 AUTOSTART_PATH = Path.home() / ".config" / "autostart" / f"{APP_NAME}.desktop"
+INSTANCE_LOCK_PATH = CONFIG_DIR / "instance.lock"
+INSTANCE_SOCKET_PATH = CONFIG_DIR / "instance.sock"
 PAD_USB_ID = (0x1189, 0x8840)
 # Codes reported by evtest for this pad's A–L button sequence.
 PAD_BUTTON_CODES = (30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38)
@@ -67,6 +69,56 @@ def set_autostart(enabled, app_path=None):
         f'Exec=/usr/bin/python3 "{executable}" --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\n',
         encoding="utf-8",
     )
+
+def notify_running_instance():
+    """Ask the existing app window to come forward instead of opening a duplicate."""
+    address = str(INSTANCE_SOCKET_PATH)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as client:
+        for _ in range(12):
+            try:
+                client.sendto(b"show", address)
+                return True
+            except OSError:
+                time.sleep(0.1)
+    return False
+
+def acquire_instance_lock():
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    fd = os.open(INSTANCE_LOCK_PATH, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except BlockingIOError:
+        notify_running_instance()
+        os.close(fd)
+        return None
+
+class InstanceNotifier:
+    """Local per-user socket used by repeat launches to raise the current window."""
+    def __init__(self, app):
+        self.app = app
+        self.stop_event = threading.Event()
+        INSTANCE_SOCKET_PATH.unlink(missing_ok=True)
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.sock.bind(str(INSTANCE_SOCKET_PATH))
+        os.chmod(INSTANCE_SOCKET_PATH, 0o600)
+        self.thread = threading.Thread(target=self._listen, daemon=True)
+        self.thread.start()
+
+    def _listen(self):
+        while not self.stop_event.is_set():
+            try:
+                message = self.sock.recv(32)
+                if message == b"show":
+                    self.app.events.put(("show", ""))
+            except OSError:
+                break
+
+    def close(self):
+        self.stop_event.set()
+        try: self.sock.close()
+        except OSError: pass
+        INSTANCE_SOCKET_PATH.unlink(missing_ok=True)
 
 def load_profile(path=CONFIG_PATH):
     try:
@@ -192,6 +244,8 @@ class MacroPadApp:
             except OSError: pass
         self.background = background
         self._was_connected = False
+        self.instance_notifier = None
+        self.instance_lock_fd = None
         root.title("12buttons2knobs · Pi Control Deck")
         root.geometry(self.settings.get("geometry") or WINDOW_SIZES[self.settings["window_size"]])
         root.minsize(760, 520)
@@ -393,14 +447,19 @@ class MacroPadApp:
             if label:
                 self.device.set(label)
                 if self.background and not self.root.winfo_viewable():
-                    self.root.deiconify()
-                    self.root.lift()
+                    self.show_window()
                 self._connect()
         elif not matching and self._was_connected:
             self._was_connected = False
             self.reader.stop()
             self.status.set("Controller unplugged. Waiting for it to reconnect.")
         self.root.after(1400, self._watch_controller)
+
+    def show_window(self):
+        self.root.deiconify()
+        self.root.lift()
+        try: self.root.focus_force()
+        except tk.TclError: pass
 
     def _show_fields(self):
         for w in self.fields.winfo_children(): w.destroy()
@@ -515,6 +574,7 @@ class MacroPadApp:
             while True:
                 kind, value = self.events.get_nowait()
                 if kind == "error": self.status.set(value)
+                elif kind == "show": self.show_window()
                 elif kind == "release":
                     control = self.profile["bindings"].get(value)
                     if control not in CONTROLS: control = self._known_button(value)
@@ -541,6 +601,9 @@ class MacroPadApp:
         self.root.after(60, self._poll)
     def close(self):
         self.reader.stop()
+        if self.instance_notifier:
+            self.instance_notifier.close()
+            self.instance_notifier = None
         try:
             if self.root.state() == "zoomed":
                 self.settings["window_size"] = "Maximized"
@@ -550,13 +613,34 @@ class MacroPadApp:
         except (OSError, tk.TclError):
             pass
         self.root.destroy()
+        if self.instance_lock_fd is not None:
+            os.close(self.instance_lock_fd)
+            self.instance_lock_fd = None
 
 def main():
     parser = argparse.ArgumentParser(description="12-button / 2-knob Pi control deck")
     parser.add_argument("--background", action="store_true",
                         help="wait hidden for the known controller, then open and connect")
     args = parser.parse_args()
-    root = tk.Tk(); MacroPadApp(root, background=args.background); root.mainloop()
+    lock_fd = acquire_instance_lock()
+    if lock_fd is None:
+        return
+    app = None
+    try:
+        root = tk.Tk()
+        app = MacroPadApp(root, background=args.background)
+        app.instance_lock_fd = lock_fd
+        app.instance_notifier = InstanceNotifier(app)
+        root.mainloop()
+    finally:
+        if app and app.instance_notifier:
+            app.instance_notifier.close()
+            app.instance_notifier = None
+        if app and app.instance_lock_fd is not None:
+            os.close(app.instance_lock_fd)
+            app.instance_lock_fd = None
+        elif not app:
+            os.close(lock_fd)
 
 if __name__ == "__main__":
     main()
