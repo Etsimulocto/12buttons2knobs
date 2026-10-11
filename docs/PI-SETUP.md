@@ -38,6 +38,8 @@ The two knob widgets now sit in the assignment panel, alongside the control/acti
 
 The **LIVE INPUT / ACTION LOG · LAST 10** sits below Physical USB Input. It reports press/release events and relative/absolute input from the connected endpoint, plus learn/bind changes, assignments, action success/failure, and input errors. Click **Copy last 10** to copy the entries for troubleshooting. The app retains at most ten entries in memory; changing the selected endpoint and clicking Connect switches what the log monitors.
 
+To make a physical control send a keyboard shortcut or gamepad/mouse output, choose **Send key/button combo** in Assign Control and fill up to four dropdown slots. The virtual outputs use Linux `/dev/uinput`; `python3-evdev` and write permission to `/dev/uinput` are required. The log reports permission or device errors if the virtual input device cannot be created.
+
 When a button is touched, its matching on-screen key lights even before an action is assigned. An unknown/unbound input is also shown in the status line; choose the target control, click **Learn selected**, and press it again to bind it.
 
 The **Appearance / startup…** window offers Midnight, Light, and Graphite themes; five accent choices; Compact, Standard, Large, and Maximized launch sizes. The main window can also be resized directly, and its last size is saved.
