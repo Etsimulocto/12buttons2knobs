@@ -30,6 +30,8 @@ After the next desktop login, a background instance waits for the tested control
 
 Linux may restrict access to /dev/input/event*. Check permissions with ls -l /dev/input/event*. Do not run the whole GUI as root. If access is denied, use the distro's input group or a device-specific udev rule, then log out and back in. Device paths can change after reconnecting.
 
+If you see **Device or resource busy**, an older app/monitor process still has the controller grabbed. Close that copy or stop its process once, update the app, and relaunch; the current version prevents duplicate app instances and raises the window already listening to the pad.
+
 This controller exposes its 12 buttons as A–L keyboard events and knob input as number-key events. Use **Learn selected** once per knob direction to capture the exact event. Other controllers may expose relative events instead.
 
 When a button is touched, its matching on-screen key lights even before an action is assigned. An unknown/unbound input is also shown in the status line; choose the target control, click **Learn selected**, and press it again to bind it.
