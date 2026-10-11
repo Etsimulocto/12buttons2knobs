@@ -1,0 +1,2 @@
+# Optional; only used for physical Linux input-event reading.
+evdev>=1.7.0
