@@ -33,7 +33,145 @@ CONTROL_LABELS = {
     **{f"button_{i:02d}": f"Button {i:02d}" for i in range(1, 13)},
     **{f"knob_{n}_{d}": f"Knob {n} {d.upper()}" for n in (1, 2) for d in ("ccw", "press", "cw")},
 }
-ACTION_TYPES = ("Unassigned", "Run command", "Copy file", "Open URL")
+ACTION_TYPES = ("Unassigned", "Run command", "Send key/button combo", "Copy file", "Open URL")
+# Display label -> (event type, Linux input code name, value). Slots are stored
+# by their stable display label in profiles so they remain readable/editable.
+INPUT_OUTPUT_CATALOG = {"— None —": None}
+INPUT_OUTPUT_CATALOG.update({f"{name}": ("EV_KEY", f"KEY_{name}", 1) for name in
+    ("LEFTCTRL", "LEFTSHIFT", "LEFTALT", "LEFTMETA", "RIGHTCTRL", "RIGHTSHIFT", "RIGHTALT", "RIGHTMETA")})
+# Short display names keep all four drop-down columns readable in the editor.
+INPUT_OUTPUT_CATALOG.update({"CTRL": INPUT_OUTPUT_CATALOG.pop("LEFTCTRL"),
+                             "SHIFT": INPUT_OUTPUT_CATALOG.pop("LEFTSHIFT"),
+                             "ALT": INPUT_OUTPUT_CATALOG.pop("LEFTALT"),
+                             "META": INPUT_OUTPUT_CATALOG.pop("LEFTMETA"),
+                             "R CTRL": INPUT_OUTPUT_CATALOG.pop("RIGHTCTRL"),
+                             "R SHIFT": INPUT_OUTPUT_CATALOG.pop("RIGHTSHIFT"),
+                             "R ALT": INPUT_OUTPUT_CATALOG.pop("RIGHTALT"),
+                             "R META": INPUT_OUTPUT_CATALOG.pop("RIGHTMETA")})
+INPUT_OUTPUT_CATALOG.update({f"{chr(letter)}": ("EV_KEY", f"KEY_{chr(letter)}", 1) for letter in range(ord("A"), ord("Z") + 1)})
+INPUT_OUTPUT_CATALOG.update({str(number): ("EV_KEY", f"KEY_{number}", 1) for number in range(10)})
+INPUT_OUTPUT_CATALOG.update({f"F{number}": ("EV_KEY", f"KEY_F{number}", 1) for number in range(1, 13)})
+INPUT_OUTPUT_CATALOG.update({label: ("EV_KEY", code, 1) for label, code in {
+    "Esc": "KEY_ESC", "Enter": "KEY_ENTER", "Space": "KEY_SPACE", "Tab": "KEY_TAB",
+    "Backspace": "KEY_BACKSPACE", "Delete": "KEY_DELETE", "Insert": "KEY_INSERT",
+    "Home": "KEY_HOME", "End": "KEY_END", "Page Up": "KEY_PAGEUP", "Page Down": "KEY_PAGEDOWN",
+    "Up": "KEY_UP", "Down": "KEY_DOWN", "Left": "KEY_LEFT", "Right": "KEY_RIGHT",
+    "Caps Lock": "KEY_CAPSLOCK", "Num Lock": "KEY_NUMLOCK", "Print Screen": "KEY_SYSRQ",
+    "Pause": "KEY_PAUSE", "-": "KEY_MINUS", "=": "KEY_EQUAL", "[": "KEY_LEFTBRACE",
+    "]": "KEY_RIGHTBRACE", "\\": "KEY_BACKSLASH", ";": "KEY_SEMICOLON", "'": "KEY_APOSTROPHE",
+    "`": "KEY_GRAVE", ",": "KEY_COMMA", ".": "KEY_DOT", "/": "KEY_SLASH",
+    "Numpad 0": "KEY_KP0", "Numpad 1": "KEY_KP1", "Numpad 2": "KEY_KP2", "Numpad 3": "KEY_KP3",
+    "Numpad 4": "KEY_KP4", "Numpad 5": "KEY_KP5", "Numpad 6": "KEY_KP6", "Numpad 7": "KEY_KP7",
+    "Numpad 8": "KEY_KP8", "Numpad 9": "KEY_KP9", "Numpad Enter": "KEY_KPENTER",
+    "Numpad +": "KEY_KPPLUS", "Numpad -": "KEY_KPMINUS", "Numpad *": "KEY_KPASTERISK",
+    "Numpad /": "KEY_KPSLASH", "Numpad .": "KEY_KPDOT",
+}.items()})
+INPUT_OUTPUT_CATALOG.update({f"F{number}": ("EV_KEY", f"KEY_F{number}", 1) for number in range(13, 25)})
+INPUT_OUTPUT_CATALOG.update({label: ("EV_KEY", code, 1) for label, code in {
+    "Menu": "KEY_MENU", "Compose": "KEY_COMPOSE", "Power": "KEY_POWER",
+    "Mute": "KEY_MUTE", "Volume +": "KEY_VOLUMEUP", "Volume -": "KEY_VOLUMEDOWN",
+    "Play/Pause": "KEY_PLAYPAUSE", "Next Track": "KEY_NEXTSONG", "Prev Track": "KEY_PREVIOUSSONG",
+    "Stop Media": "KEY_STOPCD", "Browser": "KEY_WWW", "Browser Back": "KEY_BACK",
+    "Web Forward": "KEY_FORWARD",
+}.items()})
+INPUT_OUTPUT_CATALOG.update({label: ("EV_KEY", code, 1) for label, code in {
+    "Mouse Left": "BTN_LEFT", "Mouse Right": "BTN_RIGHT", "Mouse Mid": "BTN_MIDDLE",
+    "Mouse Side": "BTN_SIDE", "Mouse Extra": "BTN_EXTRA",
+    "Pad A/South": "BTN_SOUTH", "Pad B/East": "BTN_EAST",
+    "Pad X/West": "BTN_WEST", "Pad Y/North": "BTN_NORTH",
+    "Pad LB": "BTN_TL", "Pad RB": "BTN_TR", "Pad LT": "BTN_TL2",
+    "Pad RT": "BTN_TR2", "Pad Select": "BTN_SELECT", "Pad Start": "BTN_START",
+    "Pad Guide": "BTN_MODE", "Pad L3": "BTN_THUMBL", "Pad R3": "BTN_THUMBR",
+}.items()})
+INPUT_OUTPUT_CATALOG.update({label: ("EV_ABS", code, value) for label, code, value in (
+    ("DPAD LEFT", "ABS_HAT0X", -1), ("DPAD RIGHT", "ABS_HAT0X", 1),
+    ("DPAD UP", "ABS_HAT0Y", -1), ("DPAD DOWN", "ABS_HAT0Y", 1),
+    ("Left Axis ←", "ABS_X", -32767), ("Left Axis →", "ABS_X", 32767),
+    ("Left Axis ↑", "ABS_Y", -32767), ("Left Axis ↓", "ABS_Y", 32767),
+    ("Right Axis ←", "ABS_RX", -32767), ("Right Axis →", "ABS_RX", 32767),
+    ("Right Axis ↑", "ABS_RY", -32767), ("Right Axis ↓", "ABS_RY", 32767),
+    ("LT axis", "ABS_Z", 255), ("RT axis", "ABS_RZ", 255),
+)})
+INPUT_OUTPUT_CATALOG.update({"Wheel Up": ("EV_REL", "REL_WHEEL", 1),
+                             "Wheel Down": ("EV_REL", "REL_WHEEL", -1),
+                             "Wheel Left": ("EV_REL", "REL_HWHEEL", -1),
+                             "Wheel Right": ("EV_REL", "REL_HWHEEL", 1)})
+INPUT_OUTPUT_OPTIONS = tuple(INPUT_OUTPUT_CATALOG)
+_VIRTUAL_INPUT = None
+
+def compile_input_combo(slots, ecodes):
+    """Resolve four UI choices to Linux event triples, rejecting axis conflicts."""
+    if len(slots) > 4:
+        raise ValueError("A combo can contain up to four outputs.")
+    events = {}
+    for label in slots:
+        if not label or label == "— None —":
+            continue
+        spec = INPUT_OUTPUT_CATALOG.get(label)
+        if spec is None:
+            raise ValueError(f"Unknown key/button selection: {label}")
+        type_name, code_name, value = spec
+        key = (getattr(ecodes, type_name), getattr(ecodes, code_name))
+        if key in events and events[key] != value:
+            raise ValueError(f"Conflicting selections for {label.split()[0]} axis/direction.")
+        events[key] = value
+    if not events:
+        raise ValueError("Choose at least one key, mouse button, or gamepad control.")
+    return events
+
+def _get_virtual_input(ecodes):
+    global _VIRTUAL_INPUT
+    if _VIRTUAL_INPUT is not None:
+        return _VIRTUAL_INPUT
+    from evdev import AbsInfo, UInput
+    capabilities = {ecodes.EV_KEY: set(), ecodes.EV_REL: set(), ecodes.EV_ABS: []}
+    abs_ranges = {
+        "ABS_HAT0X": (-1, 1), "ABS_HAT0Y": (-1, 1),
+        "ABS_X": (-32767, 32767), "ABS_Y": (-32767, 32767),
+        "ABS_RX": (-32767, 32767), "ABS_RY": (-32767, 32767),
+        "ABS_Z": (0, 255), "ABS_RZ": (0, 255),
+    }
+    for spec in INPUT_OUTPUT_CATALOG.values():
+        if not spec:
+            continue
+        type_name, code_name, _value = spec
+        event_type = getattr(ecodes, type_name)
+        code = getattr(ecodes, code_name)
+        if event_type == ecodes.EV_KEY:
+            capabilities[ecodes.EV_KEY].add(code)
+        elif event_type == ecodes.EV_REL:
+            capabilities[ecodes.EV_REL].add(code)
+    for code_name, (minimum, maximum) in abs_ranges.items():
+        code = getattr(ecodes, code_name)
+        capabilities[ecodes.EV_ABS].append((code, AbsInfo(0, minimum, maximum, 0, 0, 0)))
+    capabilities = {event_type: list(codes) for event_type, codes in capabilities.items() if codes}
+    _VIRTUAL_INPUT = UInput(capabilities, name="12buttons2knobs Output")
+    return _VIRTUAL_INPUT
+
+def close_virtual_input():
+    global _VIRTUAL_INPUT
+    if _VIRTUAL_INPUT is not None:
+        _VIRTUAL_INPUT.close()
+        _VIRTUAL_INPUT = None
+
+def send_input_combo(slots):
+    """Tap a selected keyboard/mouse/gamepad chord through Linux uinput."""
+    try:
+        import evdev
+    except ImportError as exc:
+        raise RuntimeError("Install python3-evdev to send keyboard, mouse, or gamepad input.") from exc
+    events = compile_input_combo(slots, evdev.ecodes)
+    device = _get_virtual_input(evdev.ecodes)
+    for (event_type, code), value in events.items():
+        device.write(event_type, code, value)
+    device.syn()
+    time.sleep(0.04)
+    for (event_type, code), value in events.items():
+        if event_type == evdev.ecodes.EV_KEY:
+            device.write(event_type, code, 0)
+        elif event_type == evdev.ecodes.EV_ABS:
+            device.write(event_type, code, 0)
+    device.syn()
 
 def fresh_profile():
     return {"name": "Default", "labels": {}, "actions": {}, "input_device": "", "bindings": {}}
@@ -165,6 +303,8 @@ def perform_action(action):
         if not url.startswith(("http://", "https://")):
             raise ValueError("URL must start with http:// or https://")
         webbrowser.open(url)
+    elif kind == "input_combo":
+        send_input_combo(action.get("slots", []))
     elif kind not in ("", "none"):
         raise ValueError(f"Unknown action type: {kind}")
 
@@ -197,6 +337,9 @@ class EvdevReader:
         for path in evdev.list_devices():
             try:
                 d = evdev.InputDevice(path)
+                if d.name == "12buttons2knobs Output":
+                    d.close()
+                    continue
                 caps = d.capabilities()
                 found.append({"path": path, "name": d.name, "vendor": d.info.vendor,
                               "product": d.info.product, "key_capable": evdev.ecodes.EV_KEY in caps,
@@ -269,6 +412,7 @@ class MacroPadApp:
         self.action_type = tk.StringVar(value="Unassigned")
         self.label = tk.StringVar()
         self.command = tk.StringVar()
+        self.combo_slots = [tk.StringVar(value="— None —") for _ in range(4)]
         self.source = tk.StringVar()
         self.destination = tk.StringVar()
         self.url = tk.StringVar()
@@ -503,6 +647,19 @@ class MacroPadApp:
         for w in self.fields.winfo_children(): w.destroy()
         kind = self.action_type.get()
         if kind == "Run command": self._field("Command and arguments", self.command)
+        elif kind == "Send key/button combo":
+            ttk.Label(self.fields, text="Choose up to four outputs (for example Ctrl + J). "
+                      "Selections are tapped together.", style="Panel.TLabel", wraplength=500,
+                      justify="left").pack(anchor="w", pady=(2, 6))
+            slots = ttk.Frame(self.fields, style="Panel.TFrame")
+            slots.pack(fill="x")
+            for index, variable in enumerate(self.combo_slots):
+                column = ttk.Frame(slots, style="Panel.TFrame")
+                column.grid(row=0, column=index, sticky="ew", padx=(0 if index == 0 else 4, 0))
+                ttk.Label(column, text=f"Slot {index + 1}", style="Panel.TLabel").pack(anchor="w")
+                ttk.Combobox(column, textvariable=variable, values=INPUT_OUTPUT_OPTIONS,
+                             state="readonly", width=12, height=14).pack(fill="x", pady=(3, 0))
+                slots.grid_columnconfigure(index, weight=1, uniform="combo-slot")
         elif kind == "Copy file":
             self._field("Source file", self.source); self._field("Copy to (file or folder)", self.destination)
         elif kind == "Open URL": self._field("Web address", self.url)
@@ -514,6 +671,9 @@ class MacroPadApp:
     def _form_action(self):
         kind = self.action_type.get()
         if kind == "Run command": return {"type": "command", "command": self.command.get().strip()}
+        if kind == "Send key/button combo":
+            selected = [variable.get() for variable in self.combo_slots if variable.get() != "— None —"]
+            return {"type": "input_combo", "slots": selected} if selected else {}
         if kind == "Copy file": return {"type": "copy_file", "source": self.source.get().strip(),
                                         "destination": self.destination.get().strip()}
         if kind == "Open URL": return {"type": "open_url", "url": self.url.get().strip()}
@@ -529,16 +689,22 @@ class MacroPadApp:
         self._refresh_deck(); self._save(True)
         self.status.set(f"Saved assignment for {CONTROL_LABELS[control]}.")
         action = self.profile["actions"].get(control)
-        self._log(f"ASSIGN {CONTROL_LABELS[control]} → {action.get('type', 'Unassigned') if action else 'Unassigned'}")
+        summary = " + ".join(action.get("slots", [])) if action and action.get("type") == "input_combo" else (action.get("type", "Unassigned") if action else "Unassigned")
+        self._log(f"ASSIGN {CONTROL_LABELS[control]} → {summary}")
 
     def _load_assignment(self):
         control = self.control.get()
         self.label.set(self.profile["labels"].get(control, ""))
         action = self.profile["actions"].get(control, {})
-        kinds = {"command": "Run command", "copy_file": "Copy file", "open_url": "Open URL"}
+        kinds = {"command": "Run command", "input_combo": "Send key/button combo",
+                 "copy_file": "Copy file", "open_url": "Open URL"}
         self.action_type.set(kinds.get(action.get("type"), "Unassigned"))
         self.command.set(action.get("command", "")); self.source.set(action.get("source", ""))
         self.destination.set(action.get("destination", "")); self.url.set(action.get("url", ""))
+        selected = list(action.get("slots", [])) if action.get("type") == "input_combo" else []
+        for index, variable in enumerate(self.combo_slots):
+            variable.set(selected[index] if index < len(selected) and selected[index] in INPUT_OUTPUT_CATALOG
+                         else "— None —")
         if hasattr(self, "fields"): self._show_fields()
 
     def _text(self, control): return self.profile["labels"].get(control, CONTROL_LABELS[control])
@@ -555,7 +721,8 @@ class MacroPadApp:
         try:
             perform_action(action)
             self.status.set(f"Ran {self.profile['labels'].get(control, CONTROL_LABELS[control])}.")
-            self._log(f"ACTION {CONTROL_LABELS[control]} → {action.get('type', 'unknown')} OK")
+            summary = " + ".join(action.get("slots", [])) if action.get("type") == "input_combo" else action.get("type", "unknown")
+            self._log(f"ACTION {CONTROL_LABELS[control]} → {summary} OK")
         except Exception as exc:
             self.status.set(f"Action failed: {exc}")
             self._log(f"ERROR action {CONTROL_LABELS[control]}: {exc}")
@@ -728,6 +895,7 @@ class MacroPadApp:
         self.root.after(60, self._poll)
     def close(self):
         self.reader.stop()
+        close_virtual_input()
         if self.instance_notifier:
             self.instance_notifier.close()
             self.instance_notifier = None
