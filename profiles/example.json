@@ -1,0 +1,13 @@
+{
+  "name": "Example",
+  "labels": {"button_01": "Copy Skycam"},
+  "actions": {
+    "button_01": {
+      "type": "copy_file",
+      "source": "~/Pictures/Skycam/latest.png",
+      "destination": "~/Pictures/Selected/latest.png"
+    }
+  },
+  "input_device": "",
+  "bindings": {}
+}
