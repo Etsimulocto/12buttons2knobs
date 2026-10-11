@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """12buttons2knobs: Raspberry Pi macro-pad dashboard and assignment app."""
 from __future__ import annotations
-import json, os, queue, shlex, shutil, subprocess, threading, webbrowser
+import argparse, json, os, queue, shlex, shutil, subprocess, threading, webbrowser
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -9,6 +9,16 @@ from tkinter import filedialog, messagebox, ttk
 APP_NAME = "12buttons2knobs"
 CONFIG_DIR = Path.home() / ".config" / APP_NAME
 CONFIG_PATH = CONFIG_DIR / "profile.json"
+SETTINGS_PATH = CONFIG_DIR / "settings.json"
+AUTOSTART_PATH = Path.home() / ".config" / "autostart" / f"{APP_NAME}.desktop"
+PAD_USB_ID = (0x1189, 0x8840)
+WINDOW_SIZES = {"Compact": "920x640", "Standard": "1100x740", "Large": "1320x860", "Maximized": "1100x740"}
+THEMES = {
+    "Midnight": {"bg": "#101018", "panel": "#1a1a27", "fg": "#ececf4", "muted": "#a8a6bd", "key": "#d4d1db", "keyfg": "#17151f"},
+    "Light": {"bg": "#eef0f5", "panel": "#ffffff", "fg": "#202130", "muted": "#626579", "key": "#d9dce8", "keyfg": "#202130"},
+    "Graphite": {"bg": "#17191c", "panel": "#24282d", "fg": "#f0f2f4", "muted": "#a8b0b8", "key": "#d2d7dc", "keyfg": "#17191c"},
+}
+ACCENTS = {"Violet": "#7650ad", "Teal": "#087f8c", "Blue": "#3267b2", "Amber": "#ad6b18", "Rose": "#a84468"}
 CONTROLS = [f"button_{i:02d}" for i in range(1, 13)] + [
     f"knob_{n}_{direction}" for n in (1, 2) for direction in ("ccw", "press", "cw")
 ]
@@ -20,6 +30,40 @@ ACTION_TYPES = ("Unassigned", "Run command", "Copy file", "Open URL")
 
 def fresh_profile():
     return {"name": "Default", "labels": {}, "actions": {}, "input_device": "", "bindings": {}}
+
+def fresh_settings():
+    return {"theme": "Midnight", "accent": "Violet", "window_size": "Standard", "geometry": "", "autostart": False}
+
+def load_settings(path=SETTINGS_PATH):
+    try:
+        loaded = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        loaded = {}
+    settings = fresh_settings()
+    if isinstance(loaded, dict):
+        settings.update({key: value for key, value in loaded.items() if key in settings and isinstance(value, type(settings[key]))})
+    if settings["theme"] not in THEMES: settings["theme"] = "Midnight"
+    if settings["accent"] not in ACCENTS: settings["accent"] = "Violet"
+    if settings["window_size"] not in WINDOW_SIZES: settings["window_size"] = "Standard"
+    return settings
+
+def save_settings(settings, path=SETTINGS_PATH):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+
+def set_autostart(enabled, app_path=None):
+    """Install/remove a per-user desktop login entry for plug monitoring."""
+    if not enabled:
+        AUTOSTART_PATH.unlink(missing_ok=True)
+        return
+    executable = Path(app_path or __file__).resolve()
+    AUTOSTART_PATH.parent.mkdir(parents=True, exist_ok=True)
+    AUTOSTART_PATH.write_text(
+        "[Desktop Entry]\nType=Application\nName=12buttons2knobs controller monitor\n"
+        f'Exec=/usr/bin/python3 "{executable}" --background\nTerminal=false\nX-GNOME-Autostart-enabled=true\n',
+        encoding="utf-8",
+    )
 
 def load_profile(path=CONFIG_PATH):
     try:
@@ -86,6 +130,21 @@ class EvdevReader:
             except OSError:
                 pass
         return found
+    @staticmethod
+    def device_details():
+        try:
+            import evdev
+        except ImportError:
+            return []
+        found = []
+        for path in evdev.list_devices():
+            try:
+                d = evdev.InputDevice(path)
+                found.append({"path": path, "name": d.name, "vendor": d.info.vendor, "product": d.info.product})
+                d.close()
+            except OSError:
+                pass
+        return found
     def stop(self):
         self.stop_event.set()
         if self.device:
@@ -120,11 +179,17 @@ class EvdevReader:
         self.thread.start()
 
 class MacroPadApp:
-    def __init__(self, root):
+    def __init__(self, root, background=False):
         self.root = root
+        self.settings = load_settings()
+        self.background = background
+        self._was_connected = False
         root.title("12buttons2knobs · Pi Control Deck")
-        root.geometry("1040x700")
-        root.minsize(900, 620)
+        root.geometry(self.settings.get("geometry") or WINDOW_SIZES[self.settings["window_size"]])
+        root.minsize(760, 520)
+        if self.settings["window_size"] == "Maximized":
+            try: root.state("zoomed")
+            except tk.TclError: pass
         self.profile = load_profile()
         self.events = queue.Queue()
         self.reader = EvdevReader(self.events)
@@ -139,31 +204,42 @@ class MacroPadApp:
         self.learn_armed = False
         self.status = tk.StringVar(value="Ready · assign an action, then click a control to test it.")
         self.keys = {}
+        self.knob_canvases = []
         self._style()
         self._build()
         self._load_assignment()
         root.after(60, self._poll)
+        root.after(900, self._watch_controller)
         root.protocol("WM_DELETE_WINDOW", self.close)
+        if background:
+            root.withdraw()
 
     def _style(self):
-        self.root.configure(bg="#101018")
+        colors = THEMES[self.settings["theme"]]
+        bg, panel, fg, muted, key, keyfg = (colors[k] for k in ("bg", "panel", "fg", "muted", "key", "keyfg"))
+        accent = ACCENTS[self.settings["accent"]]
+        self.colors = {"bg": bg, "panel": panel, "fg": fg, "muted": muted,
+                       "key": key, "keyfg": keyfg, "accent": accent}
+        self.root.configure(bg=bg)
         s = ttk.Style()
         s.theme_use("clam")
-        s.configure("TFrame", background="#101018")
-        s.configure("Panel.TFrame", background="#1a1a27")
-        s.configure("TLabel", background="#101018", foreground="#ececf4", font=("DejaVu Sans", 10))
-        s.configure("Panel.TLabel", background="#1a1a27", foreground="#ececf4", font=("DejaVu Sans", 10))
-        s.configure("Title.TLabel", background="#101018", foreground="#f4f1ff", font=("DejaVu Sans", 19, "bold"))
-        s.configure("Sub.TLabel", background="#101018", foreground="#a8a6bd", font=("DejaVu Sans", 9))
-        s.configure("Key.TButton", background="#d4d1db", foreground="#17151f",
+        s.configure("TFrame", background=bg)
+        s.configure("Panel.TFrame", background=panel)
+        s.configure("TLabel", background=bg, foreground=fg, font=("DejaVu Sans", 10))
+        s.configure("Panel.TLabel", background=panel, foreground=fg, font=("DejaVu Sans", 10))
+        s.configure("Title.TLabel", background=bg, foreground=fg, font=("DejaVu Sans", 19, "bold"))
+        s.configure("Sub.TLabel", background=bg, foreground=muted, font=("DejaVu Sans", 9))
+        s.configure("Key.TButton", background=key, foreground=keyfg,
                     font=("DejaVu Sans", 10, "bold"), padding=12)
-        s.map("Key.TButton", background=[("active", "#f0b6ff"), ("pressed", "#a778d4")])
-        s.configure("Accent.TButton", background="#7650ad", foreground="white", padding=8)
-        s.map("Accent.TButton", background=[("active", "#946dc9")])
-        s.configure("TCombobox", fieldbackground="#29283a", background="#29283a", foreground="#f4f1ff")
-        s.configure("TEntry", fieldbackground="#29283a", foreground="#f4f1ff")
-        s.configure("TLabelframe", background="#1a1a27", foreground="#ececf4")
-        s.configure("TLabelframe.Label", background="#1a1a27", foreground="#bfa2ff")
+        s.map("Key.TButton", background=[("active", accent), ("pressed", accent)])
+        s.configure("Accent.TButton", background=accent, foreground="white", padding=8)
+        s.map("Accent.TButton", background=[("active", accent)])
+        s.configure("TCombobox", fieldbackground=panel, background=panel, foreground=fg)
+        s.configure("TEntry", fieldbackground=panel, foreground=fg)
+        s.configure("TCheckbutton", background=panel, foreground=fg)
+        s.map("TCheckbutton", background=[("active", panel)])
+        s.configure("TLabelframe", background=panel, foreground=fg)
+        s.configure("TLabelframe.Label", background=panel, foreground=accent)
 
     def _build(self):
         outer = ttk.Frame(self.root, padding=18); outer.pack(fill="both", expand=True)
@@ -180,6 +256,7 @@ class MacroPadApp:
         foot = ttk.Frame(outer); foot.pack(fill="x", pady=(12, 0))
         ttk.Label(foot, textvariable=self.status, style="Sub.TLabel").pack(side="left", fill="x", expand=True)
         ttk.Button(foot, text="Load profile…", command=self._open_profile).pack(side="right")
+        ttk.Button(foot, text="Appearance / startup…", command=self._open_settings).pack(side="right", padx=(8, 0))
         ttk.Button(foot, text="Save profile", command=self._save).pack(side="right", padx=(8, 0))
 
     def _build_deck(self):
@@ -204,10 +281,11 @@ class MacroPadApp:
         box = ttk.Frame(parent, style="Panel.TFrame", padding=(4, 0, 4, 14)); box.pack(fill="x")
         ttk.Label(box, text=f"KNOB {n}", style="Panel.TLabel",
                   font=("DejaVu Sans", 9, "bold")).pack(pady=(2, 5))
-        c = tk.Canvas(box, width=100, height=100, bg="#1a1a27", highlightthickness=0); c.pack()
-        c.create_oval(11, 11, 89, 89, fill="#333342", outline="#9592a6", width=3)
-        c.create_oval(20, 20, 80, 80, fill="#5b5a68", outline="#b6b4c1", width=2)
-        c.create_line(50, 50, 50, 27, fill="#f0dcff", width=4)
+        c = tk.Canvas(box, width=100, height=100, bg=self.colors["panel"], highlightthickness=0); c.pack()
+        c.create_oval(11, 11, 89, 89, fill=self.colors["bg"], outline=self.colors["muted"], width=3)
+        c.create_oval(20, 20, 80, 80, fill=self.colors["panel"], outline=self.colors["muted"], width=2)
+        c.create_line(50, 50, 50, 27, fill=self.colors["accent"], width=4)
+        self.knob_canvases.append(c)
         row = ttk.Frame(box, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
         for text, suffix in (("◀", "ccw"), ("Press", "press"), ("▶", "cw")):
             ttk.Button(row, text=text, command=lambda k=f"knob_{n}_{suffix}": self._activate(k)).pack(side="left", padx=2)
@@ -241,6 +319,75 @@ class MacroPadApp:
                   "Requires Linux evdev access.", style="Panel.TLabel", wraplength=320,
                   justify="left").pack(anchor="w", pady=(7, 0))
         self._refresh_devices()
+
+    def _open_settings(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Appearance and startup")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        frame = ttk.Frame(dialog, style="Panel.TFrame", padding=18)
+        frame.pack(fill="both", expand=True)
+        theme_var = tk.StringVar(value=self.settings["theme"])
+        accent_var = tk.StringVar(value=self.settings["accent"])
+        size_var = tk.StringVar(value=self.settings["window_size"])
+        autostart_var = tk.BooleanVar(value=self.settings["autostart"])
+        ttk.Label(frame, text="Appearance", style="Panel.TLabel",
+                  font=("DejaVu Sans", 12, "bold")).pack(anchor="w", pady=(0, 10))
+        for label, variable, choices in (("Color theme", theme_var, tuple(THEMES)),
+                                         ("Accent color", accent_var, tuple(ACCENTS)),
+                                         ("Window size on launch", size_var, tuple(WINDOW_SIZES))):
+            ttk.Label(frame, text=label, style="Panel.TLabel").pack(anchor="w")
+            ttk.Combobox(frame, textvariable=variable, values=choices, state="readonly", width=28).pack(fill="x", pady=(3, 10))
+        ttk.Checkbutton(frame, text="Start monitor at login; open deck when pad is plugged in",
+                        variable=autostart_var).pack(anchor="w", pady=(2, 14))
+        def apply_settings():
+            self.settings.update(theme=theme_var.get(), accent=accent_var.get(),
+                                  window_size=size_var.get(), autostart=autostart_var.get(), geometry="")
+            try:
+                set_autostart(self.settings["autostart"])
+                save_settings(self.settings)
+            except OSError as exc:
+                messagebox.showerror("Settings could not be saved", str(exc), parent=dialog)
+                return
+            self._style()
+            for canvas in self.knob_canvases:
+                canvas.configure(bg=self.colors["panel"])
+                canvas.itemconfigure(1, fill=self.colors["bg"], outline=self.colors["muted"])
+                canvas.itemconfigure(2, fill=self.colors["panel"], outline=self.colors["muted"])
+                canvas.itemconfigure(3, fill=self.colors["accent"])
+            if size_var.get() == "Maximized":
+                try: self.root.state("zoomed")
+                except tk.TclError: self.root.geometry(WINDOW_SIZES["Maximized"])
+            else:
+                try: self.root.state("normal")
+                except tk.TclError: pass
+                self.root.geometry(WINDOW_SIZES[size_var.get()])
+            self.status.set("Appearance and startup settings saved.")
+            dialog.destroy()
+        row = ttk.Frame(frame, style="Panel.TFrame")
+        row.pack(fill="x")
+        ttk.Button(row, text="Apply", style="Accent.TButton", command=apply_settings).pack(side="right")
+        ttk.Button(row, text="Cancel", command=dialog.destroy).pack(side="right", padx=(0, 8))
+
+    def _watch_controller(self):
+        details = EvdevReader.device_details()
+        matching = next((item for item in details
+                         if (item["vendor"], item["product"]) == PAD_USB_ID), None)
+        if matching and not self._was_connected:
+            self._was_connected = True
+            self._refresh_devices()
+            label = next((label for label, path in self.device_paths.items() if path == matching["path"]), "")
+            if label:
+                self.device.set(label)
+                if self.background and not self.root.winfo_viewable():
+                    self.root.deiconify()
+                    self.root.lift()
+                self._connect()
+        elif not matching and self._was_connected:
+            self._was_connected = False
+            self.reader.stop()
+            self.status.set("Controller unplugged. Waiting for it to reconnect.")
+        self.root.after(1400, self._watch_controller)
 
     def _show_fields(self):
         for w in self.fields.winfo_children(): w.destroy()
@@ -344,10 +491,23 @@ class MacroPadApp:
         except queue.Empty: pass
         self.root.after(60, self._poll)
     def close(self):
-        self.reader.stop(); self.root.destroy()
+        self.reader.stop()
+        try:
+            if self.root.state() == "zoomed":
+                self.settings["window_size"] = "Maximized"
+            else:
+                self.settings["geometry"] = self.root.geometry()
+            save_settings(self.settings)
+        except (OSError, tk.TclError):
+            pass
+        self.root.destroy()
 
 def main():
-    root = tk.Tk(); MacroPadApp(root); root.mainloop()
+    parser = argparse.ArgumentParser(description="12-button / 2-knob Pi control deck")
+    parser.add_argument("--background", action="store_true",
+                        help="wait hidden for the known controller, then open and connect")
+    args = parser.parse_args()
+    root = tk.Tk(); MacroPadApp(root, background=args.background); root.mainloop()
 
 if __name__ == "__main__":
     main()
