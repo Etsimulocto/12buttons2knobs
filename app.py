@@ -2,6 +2,8 @@
 """12buttons2knobs: Raspberry Pi macro-pad dashboard and assignment app."""
 from __future__ import annotations
 import argparse, fcntl, json, os, queue, shlex, shutil, socket, subprocess, threading, time, webbrowser
+from collections import deque
+from datetime import datetime
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -198,6 +200,7 @@ class EvdevReader:
                 caps = d.capabilities()
                 found.append({"path": path, "name": d.name, "vendor": d.info.vendor,
                               "product": d.info.product, "key_capable": evdev.ecodes.EV_KEY in caps,
+                              "relative_capable": evdev.ecodes.EV_REL in caps,
                               "axis_capable": evdev.ecodes.EV_ABS in caps})
                 d.close()
             except OSError:
@@ -230,8 +233,12 @@ class EvdevReader:
                         self.output.put(("input", f"key:{event.code}"))
                     elif event.type == evdev.ecodes.EV_KEY and event.value == 0:
                         self.output.put(("release", f"key:{event.code}"))
+                    elif event.type == evdev.ecodes.EV_KEY and event.value == 2:
+                        self.output.put(("repeat", f"key:{event.code}"))
                     elif event.type == evdev.ecodes.EV_REL and event.value:
                         self.output.put(("input", f"rel:{event.code}:{'+' if event.value > 0 else '-'}"))
+                    elif event.type == evdev.ecodes.EV_ABS:
+                        self.output.put(("input", f"abs:{event.code}:{event.value}"))
             except (OSError, PermissionError) as exc:
                 if not self.stop_event.is_set():
                     self.output.put(("error", f"Input device error: {exc}"))
@@ -271,6 +278,7 @@ class MacroPadApp:
         self.keys = {}
         self.control_widgets = {}
         self.knob_canvases = []
+        self.log_entries = deque(maxlen=10)
         self._style()
         self._build()
         self._load_assignment()
@@ -316,8 +324,17 @@ class MacroPadApp:
         body = ttk.Frame(outer); body.pack(fill="both", expand=True)
         self.deck = ttk.Frame(body, style="Panel.TFrame", padding=16)
         self.deck.pack(side="left", fill="both", expand=True, padx=(0, 14))
-        self.editor = ttk.Frame(body, style="Panel.TFrame", padding=16, width=540)
-        self.editor.pack(side="right", fill="y"); self.editor.pack_propagate(False)
+        self.editor_host = ttk.Frame(body, style="Panel.TFrame", width=570)
+        self.editor_host.pack(side="right", fill="y"); self.editor_host.pack_propagate(False)
+        self.editor_canvas = tk.Canvas(self.editor_host, bg=self.colors["panel"], highlightthickness=0, width=548)
+        self.editor_scrollbar = ttk.Scrollbar(self.editor_host, orient="vertical", command=self.editor_canvas.yview)
+        self.editor_canvas.configure(yscrollcommand=self.editor_scrollbar.set)
+        self.editor_scrollbar.pack(side="right", fill="y")
+        self.editor_canvas.pack(side="left", fill="both", expand=True)
+        self.editor = ttk.Frame(self.editor_canvas, style="Panel.TFrame", padding=16)
+        self.editor_window = self.editor_canvas.create_window((0, 0), window=self.editor, anchor="nw")
+        self.editor.bind("<Configure>", lambda _e: self.editor_canvas.configure(scrollregion=self.editor_canvas.bbox("all")))
+        self.editor_canvas.bind("<Configure>", lambda e: self.editor_canvas.itemconfigure(self.editor_window, width=e.width))
         self._build_deck(); self._build_editor()
         foot = ttk.Frame(outer); foot.pack(fill="x", pady=(12, 0))
         ttk.Label(foot, textvariable=self.status, style="Sub.TLabel").pack(side="left", fill="x", expand=True)
@@ -389,9 +406,21 @@ class MacroPadApp:
         ttk.Button(row, text="Refresh", command=self._refresh_devices).pack(side="left")
         ttk.Button(row, text="Connect", command=self._connect).pack(side="left", padx=5)
         ttk.Button(row, text="Learn selected", command=self._learn).pack(side="left")
-        ttk.Label(self.editor, text="Select a control, click Learn, then press or turn it. "
-                  "Requires Linux evdev access.", style="Panel.TLabel", wraplength=320,
+        ttk.Label(self.editor, text="Pick an event endpoint, Connect, then choose a control and click Learn. "
+                  "The live log shows events from the connected endpoint. Requires Linux evdev access.",
+                  style="Panel.TLabel", wraplength=500,
                   justify="left").pack(anchor="w", pady=(7, 0))
+        ttk.Separator(self.editor).pack(fill="x", pady=(10, 6))
+        log_head = ttk.Frame(self.editor, style="Panel.TFrame")
+        log_head.pack(fill="x")
+        ttk.Label(log_head, text="LIVE INPUT / ACTION LOG · LAST 10", style="Panel.TLabel",
+                  font=("DejaVu Sans", 9, "bold")).pack(side="left", anchor="w")
+        ttk.Button(log_head, text="Copy last 10", command=self._copy_log).pack(side="right")
+        self.log_text = tk.Text(self.editor, height=10, wrap="char", state="disabled",
+                                bg=self.colors["bg"], fg=self.colors["fg"],
+                                insertbackground=self.colors["fg"], relief="flat",
+                                font=("DejaVu Sans Mono", 8), padx=5, pady=5)
+        self.log_text.pack(fill="x", pady=(5, 0))
         self._refresh_devices()
 
     def _open_settings(self):
@@ -437,6 +466,7 @@ class MacroPadApp:
                 except tk.TclError: pass
                 self.root.geometry(WINDOW_SIZES[size_var.get()])
             self.status.set("Appearance and startup settings saved.")
+            self._log("SETTINGS appearance/startup updated")
             dialog.destroy()
         row = ttk.Frame(frame, style="Panel.TFrame")
         row.pack(fill="x")
@@ -460,6 +490,7 @@ class MacroPadApp:
             self._was_connected = False
             self.reader.stop()
             self.status.set("Controller unplugged. Waiting for it to reconnect.")
+            self._log("DISCONNECT controller unplugged")
         self.root.after(1400, self._watch_controller)
 
     def show_window(self):
@@ -497,6 +528,8 @@ class MacroPadApp:
         else: self.profile["actions"].pop(control, None)
         self._refresh_deck(); self._save(True)
         self.status.set(f"Saved assignment for {CONTROL_LABELS[control]}.")
+        action = self.profile["actions"].get(control)
+        self._log(f"ASSIGN {CONTROL_LABELS[control]} → {action.get('type', 'Unassigned') if action else 'Unassigned'}")
 
     def _load_assignment(self):
         control = self.control.get()
@@ -516,18 +549,25 @@ class MacroPadApp:
     def _run(self, control):
         action = self.profile["actions"].get(control)
         if not action:
-            self.status.set(f"{CONTROL_LABELS[control]} has no action assigned."); return
+            self.status.set(f"{CONTROL_LABELS[control]} has no action assigned.")
+            self._log(f"UNASSIGNED action for {CONTROL_LABELS[control]}")
+            return
         try:
             perform_action(action)
             self.status.set(f"Ran {self.profile['labels'].get(control, CONTROL_LABELS[control])}.")
+            self._log(f"ACTION {CONTROL_LABELS[control]} → {action.get('type', 'unknown')} OK")
         except Exception as exc:
-            self.status.set(f"Action failed: {exc}"); messagebox.showerror("Action failed", str(exc))
+            self.status.set(f"Action failed: {exc}")
+            self._log(f"ERROR action {CONTROL_LABELS[control]}: {exc}")
+            messagebox.showerror("Action failed", str(exc))
     def _test(self):
         control = self.control.get(); self._apply(); self._run(control)
     def _save(self, silent=False):
         try:
             save_profile(self.profile)
-            if not silent: self.status.set(f"Profile saved: {CONFIG_PATH}")
+            if not silent:
+                self.status.set(f"Profile saved: {CONFIG_PATH}")
+                self._log("PROFILE saved")
         except OSError as exc: messagebox.showerror("Could not save profile", str(exc))
     def _open_profile(self):
         path = filedialog.askopenfilename(title="Load profile",
@@ -535,19 +575,24 @@ class MacroPadApp:
         if path:
             self.profile = load_profile(path); self._refresh_deck(); self._load_assignment()
             self.status.set(f"Loaded profile {self.profile.get('name', 'Default')}.")
+            self._log(f"PROFILE loaded {Path(path).name}")
     def _refresh_devices(self):
-        found = [item for item in EvdevReader.device_details() if item["key_capable"]]
+        found = EvdevReader.device_details()
         found.sort(key=lambda item: (0 if (item["vendor"], item["product"]) == PAD_USB_ID else 1,
+                                    0 if item["key_capable"] else 1,
                                     item["name"].lower(), item["path"]))
         self.device_paths = {}
+        self.device_meta_by_path = {}
         for item in found:
             event = Path(item["path"]).name
             usb_id = f'{item["vendor"]:04x}:{item["product"]:04x}'
             is_pad = (item["vendor"], item["product"]) == PAD_USB_ID
-            kind = "keys + axes" if item["axis_capable"] else "keys"
-            prefix = "★ THIS PAD" if is_pad else kind
-            label = f'{prefix} | {item["name"]} | USB {usb_id} | {event}'
+            kinds = "+".join(name for name, enabled in (("KEY", item["key_capable"]),
+                              ("REL", item["relative_capable"]), ("ABS", item["axis_capable"])) if enabled) or "OTHER"
+            prefix = f"★ THIS PAD · {kinds}" if is_pad else kinds
+            label = f'{prefix} | {item["name"]} | {usb_id} | {event}'
             self.device_paths[label] = item["path"]
+            self.device_meta_by_path[item["path"]] = {"name": item["name"], "usb_id": usb_id}
         values = list(self.device_paths); self.device_combo.configure(values=values)
         active = next((label for label, path in self.device_paths.items()
                        if path == self.profile.get("input_device")), "")
@@ -556,17 +601,70 @@ class MacroPadApp:
             preferred = next((label for label in values if label.startswith("★ THIS PAD")), values[0])
             self.device.set(preferred)
         else:
-            self.device.set(""); self.status.set("No keyboard-capable evdev input found. Install evdev and check permissions.")
+            self.device.set(""); self.status.set("No evdev input devices found. Install evdev and check permissions.")
     def _connect(self):
         path = self.device_paths.get(self.device.get(), "")
-        if not path: self.status.set("Choose a detected device first."); return
+        if not path:
+            self.status.set("Choose a detected device first.")
+            self._log("ERROR connect: no device selected")
+            return
         self.profile["input_device"] = path; self.reader.start(path); self._save(True)
         self.status.set(f"Listening to {self.device.get()}.")
+        self._log(f"CONNECT {self.device.get()}")
     def _learn(self):
         if not self.profile.get("input_device"):
-            self.status.set("Choose and connect the physical input first."); return
+            self.status.set("Choose and connect the physical input first.")
+            self._log("ERROR learn: connect an input device first")
+            return
         self.learn_armed = True
         self.status.set(f"Learning {CONTROL_LABELS[self.control.get()]}: press or turn it now.")
+        self._log(f"LEARN armed for {CONTROL_LABELS[self.control.get()]}")
+
+    def _log(self, message):
+        """Append one timestamped entry; deque caps the visible/copyable history at ten."""
+        self.log_entries.append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
+        if hasattr(self, "log_text"):
+            self.log_text.configure(state="normal")
+            self.log_text.delete("1.0", "end")
+            self.log_text.insert("end", "\n".join(self.log_entries))
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+
+    def _copy_log(self):
+        contents = "\n".join(self.log_entries)
+        self.root.clipboard_clear()
+        self.root.clipboard_append(contents)
+        self.root.update_idletasks()
+        self.status.set(f"Copied {len(self.log_entries)} log entr{'y' if len(self.log_entries) == 1 else 'ies'}.")
+
+    def _event_source(self):
+        path = getattr(self.reader.device, "path", None) if self.reader.device else None
+        if path:
+            meta = getattr(self, "device_meta_by_path", {}).get(path, {})
+            return f"{meta.get('name', Path(path).name)} {meta.get('usb_id', '')} {Path(path).name}".strip()
+        return self.device.get() or "input"
+
+    @staticmethod
+    def _format_input(value):
+        if value.startswith("key:"):
+            try:
+                code = int(value.split(":", 1)[1])
+                if code in PAD_BUTTON_CODES:
+                    return f"key {PAD_BUTTON_NAMES[PAD_BUTTON_CODES.index(code)]}"
+                # These are the number keys reported by the tested encoder.
+                knob_keys = {2: "1", 4: "3", 5: "4", 7: "6"}
+                if code in knob_keys:
+                    return f"key {knob_keys[code]} (knob)"
+                return f"key code {code}"
+            except ValueError:
+                return value
+        if value.startswith("rel:"):
+            _, code, direction = (value.split(":") + [""])[:3]
+            return f"relative axis {code} {('right/up' if direction == '+' else 'left/down')}"
+        if value.startswith("abs:"):
+            _, code, axis_value = (value.split(":") + [""])[:3]
+            return f"absolute axis {code} = {axis_value}"
+        return value
 
     def _light_control(self, control, held=True, timed=False):
         widget = self.control_widgets.get(control)
@@ -592,30 +690,40 @@ class MacroPadApp:
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == "error": self.status.set(value)
+                if kind == "error":
+                    self.status.set(value)
+                    self._log(f"ERROR {value}")
                 elif kind == "show": self.show_window()
+                elif kind == "repeat":
+                    self._log(f"INPUT {self._event_source()} · {self._format_input(value)} repeat")
                 elif kind == "release":
+                    self._log(f"INPUT {self._event_source()} · {self._format_input(value)} up")
                     control = self.profile["bindings"].get(value)
                     if control not in CONTROLS: control = self._known_button(value)
                     if control in CONTROLS: self._light_control(control, held=False)
-                elif self.learn_armed:
-                    self.profile["bindings"][value] = self.control.get()
-                    self.learn_armed = False; self._save(True)
-                    self._light_control(self.control.get())
-                    self.status.set(f"Bound {value} to {CONTROL_LABELS[self.control.get()]}.")
-                else:
-                    control = self.profile["bindings"].get(value)
-                    if control in CONTROLS:
-                        self._light_control(control, timed=value.startswith("rel:"))
-                        self._run(control)
+                elif kind == "input":
+                    self._log(f"INPUT {self._event_source()} · {self._format_input(value)} down")
+                    if self.learn_armed:
+                        self.profile["bindings"][value] = self.control.get()
+                        self.learn_armed = False; self._save(True)
+                        self._light_control(self.control.get())
+                        self.status.set(f"Bound {value} to {CONTROL_LABELS[self.control.get()]}.")
+                        self._log(f"BOUND {self._format_input(value)} → {CONTROL_LABELS[self.control.get()]}")
                     else:
-                        hinted = self._known_button(value)
-                        if hinted:
-                            self._light_control(hinted)
-                            index = int(hinted[-2:]) - 1
-                            self.status.set(f"Detected Button {index + 1:02d} (key {PAD_BUTTON_NAMES[index]}). Select it and click Learn selected to bind it.")
+                        control = self.profile["bindings"].get(value)
+                        if control in CONTROLS:
+                            self._light_control(control, timed=value.startswith("rel:"))
+                            self._run(control)
                         else:
-                            self.status.set(f"Detected {value}, but it is unassigned. Select a control and click Learn selected.")
+                            hinted = self._known_button(value)
+                            if hinted:
+                                self._light_control(hinted)
+                                index = int(hinted[-2:]) - 1
+                                self.status.set(f"Detected Button {index + 1:02d} (key {PAD_BUTTON_NAMES[index]}). Select it and click Learn selected to bind it.")
+                                self._log(f"UNBOUND input; suggested {CONTROL_LABELS[hinted]}")
+                            else:
+                                self.status.set(f"Detected {value}, but it is unassigned. Select a control and click Learn selected.")
+                                self._log(f"UNBOUND input {value}")
         except queue.Empty: pass
         self.root.after(60, self._poll)
     def close(self):
