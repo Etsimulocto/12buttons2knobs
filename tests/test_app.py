@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from app import (fresh_profile, load_profile, save_profile, perform_action,
-                 fresh_settings, load_settings, save_settings)
+                 fresh_settings, load_settings, save_settings, MacroPadApp)
 
 class ProfileTests(unittest.TestCase):
     def test_profile_round_trip(self):
@@ -31,6 +31,11 @@ class ProfileTests(unittest.TestCase):
             path = Path(tmp) / "settings.json"
             save_settings(settings, path)
             self.assertEqual(load_settings(path), settings)
+
+    def test_pad_letter_codes_preview_button_order(self):
+        self.assertEqual(MacroPadApp._known_button("key:30"), "button_01")
+        self.assertEqual(MacroPadApp._known_button("key:38"), "button_12")
+        self.assertIsNone(MacroPadApp._known_button("key:2"))
 
 if __name__ == "__main__":
     unittest.main()
