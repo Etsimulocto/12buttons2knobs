@@ -6,7 +6,7 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 
 - Shows 12 keys in a 4 × 3 grid with two rotary controls beside them.
 - Lets each key and each knob action receive a custom label and assignment.
-- Supports launching a command or application, copying a file, or opening a web URL.
+- Supports launching a command or application, sending a four-part keyboard/mouse/gamepad combo, copying a file, or opening a web URL.
 - Includes on-screen controls so assignments can be tested before the physical pad is connected.
 - Reads Linux input events with evdev and has a learn mode to map physical controls to app controls.
 - Highlights physical presses on the on-screen deck and reports input events that still need a binding.
@@ -35,6 +35,8 @@ The UI can be explored without the physical controller. To map hardware, plug in
 
 The **Live input / action log** below Physical USB Input records key presses/releases, relative and absolute events, learn/bind operations, assignments, action results, and errors. **Copy last 10** puts its current entries on the clipboard for sharing. The log is capped at ten lines; it monitors the endpoint selected with Connect.
 
+To map a pad input to a keyboard shortcut or controller output, choose **Send key/button combo** under **Assign Control**. Pick up to four outputs in the four side-by-side slots, such as **CTRL** + **J**, **DPAD UP**, or a **Left Axis** direction. The app taps the selected outputs together through a Linux virtual input device (`/dev/uinput`).
+
 Open **Appearance / startup…** to change the theme, accent, or launch size. The first app launch adds a desktop autostart entry for the current user; after login, the app waits in the background and opens when the pad is connected. Turn off **Start monitor at login** there to remove the entry. The pad is identified by USB vendor/product `1189:8840`.
 
 See [Raspberry Pi setup](docs/PI-SETUP.md) for permissions and device troubleshooting, and [assignment ideas](docs/ASSIGNMENTS.md) for examples.
@@ -58,7 +60,7 @@ Those are placeholders; replace them with the paths Skycam actually uses on the 
 
 The visual deck, assignment editor, profile save/load, action runner, evdev learn mode, press highlighting, appearance settings, window sizing, and optional plug-triggered launch monitor are implemented. On the tested Raspberry Pi controller, the 12 buttons send keyboard keys A–L; the knobs emit number keys including 1, 3, 4, and 6. The A–L buttons light in the matching on-screen order. Learn mode records these input events. The exact knob-direction mapping still needs to be learned on the device.
 
-The profile supports 12 buttons plus six knob events: clockwise, counter-clockwise, and press for each knob. Actions run locally as the logged-in user. Command actions are split into arguments and do not use a shell; put multi-step commands in a script.
+The profile supports 12 buttons plus six knob events: clockwise, counter-clockwise, and press for each knob. Actions run locally as the logged-in user. Command actions are split into arguments and do not use a shell; put multi-step commands in a script. Sending key/gamepad output requires `python3-evdev` and permission to write to `/dev/uinput`.
 
 ## Repository map
 
