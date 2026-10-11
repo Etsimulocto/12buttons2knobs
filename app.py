@@ -17,7 +17,7 @@ PAD_USB_ID = (0x1189, 0x8840)
 # Codes reported by evtest for this pad's A–L button sequence.
 PAD_BUTTON_CODES = (30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38)
 PAD_BUTTON_NAMES = ("A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L")
-WINDOW_SIZES = {"Compact": "920x640", "Standard": "1100x740", "Large": "1320x860", "Maximized": "1100x740"}
+WINDOW_SIZES = {"Compact": "1040x680", "Standard": "1240x800", "Large": "1420x900", "Maximized": "1240x800"}
 THEMES = {
     "Midnight": {"bg": "#101018", "panel": "#1a1a27", "fg": "#ececf4", "muted": "#a8a6bd", "key": "#d4d1db", "keyfg": "#17151f"},
     "Light": {"bg": "#eef0f5", "panel": "#ffffff", "fg": "#202130", "muted": "#626579", "key": "#d9dce8", "keyfg": "#202130"},
@@ -195,7 +195,10 @@ class EvdevReader:
         for path in evdev.list_devices():
             try:
                 d = evdev.InputDevice(path)
-                found.append({"path": path, "name": d.name, "vendor": d.info.vendor, "product": d.info.product})
+                caps = d.capabilities()
+                found.append({"path": path, "name": d.name, "vendor": d.info.vendor,
+                              "product": d.info.product, "key_capable": evdev.ecodes.EV_KEY in caps,
+                              "axis_capable": evdev.ecodes.EV_ABS in caps})
                 d.close()
             except OSError:
                 pass
@@ -248,7 +251,7 @@ class MacroPadApp:
         self.instance_lock_fd = None
         root.title("12buttons2knobs · Pi Control Deck")
         root.geometry(self.settings.get("geometry") or WINDOW_SIZES[self.settings["window_size"]])
-        root.minsize(760, 520)
+        root.minsize(1000, 600)
         if self.settings["window_size"] == "Maximized":
             try: root.state("zoomed")
             except tk.TclError: pass
@@ -313,7 +316,7 @@ class MacroPadApp:
         body = ttk.Frame(outer); body.pack(fill="both", expand=True)
         self.deck = ttk.Frame(body, style="Panel.TFrame", padding=16)
         self.deck.pack(side="left", fill="both", expand=True, padx=(0, 14))
-        self.editor = ttk.Frame(body, style="Panel.TFrame", padding=16, width=360)
+        self.editor = ttk.Frame(body, style="Panel.TFrame", padding=16, width=540)
         self.editor.pack(side="right", fill="y"); self.editor.pack_propagate(False)
         self._build_deck(); self._build_editor()
         foot = ttk.Frame(outer); foot.pack(fill="x", pady=(12, 0))
@@ -336,32 +339,36 @@ class MacroPadApp:
             self.control_widgets[control] = b
             keys.grid_columnconfigure(col, weight=1, uniform="key")
             keys.grid_rowconfigure(row, weight=1, uniform="key")
-        knobs = ttk.Frame(area, style="Panel.TFrame"); knobs.pack(side="right", fill="y")
-        for n in (1, 2): self._knob(knobs, n)
-        ttk.Label(self.deck, text="Click a key or knob action to test its assignment.",
+        ttk.Label(self.deck, text="Touch the pad to light its matching key. Click a key to test its assignment.",
                   style="Panel.TLabel").pack(anchor="w", pady=(14, 0))
 
     def _knob(self, parent, n):
-        box = ttk.Frame(parent, style="Panel.TFrame", padding=(4, 0, 4, 14)); box.pack(fill="x")
+        box = ttk.Frame(parent, style="Panel.TFrame", padding=(5, 2, 5, 5)); box.pack(side="left", fill="x", expand=True)
         ttk.Label(box, text=f"KNOB {n}", style="Panel.TLabel",
-                  font=("DejaVu Sans", 9, "bold")).pack(pady=(2, 5))
-        c = tk.Canvas(box, width=100, height=100, bg=self.colors["panel"], highlightthickness=0); c.pack()
-        c.create_oval(11, 11, 89, 89, fill=self.colors["bg"], outline=self.colors["muted"], width=3)
-        c.create_oval(20, 20, 80, 80, fill=self.colors["panel"], outline=self.colors["muted"], width=2)
-        c.create_line(50, 50, 50, 27, fill=self.colors["accent"], width=4)
+                  font=("DejaVu Sans", 9, "bold")).pack(pady=(2, 4))
+        c = tk.Canvas(box, width=74, height=74, bg=self.colors["panel"], highlightthickness=0); c.pack()
+        c.create_oval(7, 7, 67, 67, fill=self.colors["bg"], outline=self.colors["muted"], width=3)
+        c.create_oval(15, 15, 59, 59, fill=self.colors["panel"], outline=self.colors["muted"], width=2)
+        c.create_line(37, 37, 37, 20, fill=self.colors["accent"], width=4)
         self.knob_canvases.append(c)
         row = ttk.Frame(box, style="Panel.TFrame"); row.pack(fill="x", pady=(6, 0))
         for text, suffix in (("◀", "ccw"), ("Press", "press"), ("▶", "cw")):
             control = f"knob_{n}_{suffix}"
             button = ttk.Button(row, text=text, command=lambda k=control: self._activate(k))
-            button.pack(side="left", padx=2)
+            button.pack(side="left", padx=1, fill="x", expand=True)
             self.control_widgets[control] = button
 
     def _build_editor(self):
+        ttk.Label(self.editor, text="KNOBS + ASSIGNMENTS", style="Panel.TLabel",
+                  font=("DejaVu Sans", 11, "bold")).pack(anchor="w", pady=(0, 5))
+        knobs = ttk.Frame(self.editor, style="Panel.TFrame")
+        knobs.pack(fill="x", pady=(0, 8))
+        for n in (1, 2): self._knob(knobs, n)
+        ttk.Separator(self.editor).pack(fill="x", pady=(0, 8))
         ttk.Label(self.editor, text="ASSIGN CONTROL", style="Panel.TLabel",
-                  font=("DejaVu Sans", 11, "bold")).pack(anchor="w", pady=(0, 10))
+                  font=("DejaVu Sans", 11, "bold")).pack(anchor="w", pady=(0, 7))
         ttk.Label(self.editor, text="Control", style="Panel.TLabel").pack(anchor="w")
-        combo = ttk.Combobox(self.editor, textvariable=self.control, values=CONTROLS, state="readonly")
+        combo = ttk.Combobox(self.editor, textvariable=self.control, values=CONTROLS, state="readonly", width=46)
         combo.pack(fill="x", pady=(3, 8)); combo.bind("<<ComboboxSelected>>", lambda _e: self._load_assignment())
         ttk.Label(self.editor, text="Deck label", style="Panel.TLabel").pack(anchor="w")
         ttk.Entry(self.editor, textvariable=self.label).pack(fill="x", pady=(3, 8))
@@ -376,7 +383,7 @@ class MacroPadApp:
         ttk.Separator(self.editor).pack(fill="x", pady=4)
         ttk.Label(self.editor, text="PHYSICAL USB INPUT", style="Panel.TLabel",
                   font=("DejaVu Sans", 10, "bold")).pack(anchor="w", pady=(10, 7))
-        self.device_combo = ttk.Combobox(self.editor, textvariable=self.device, state="readonly")
+        self.device_combo = ttk.Combobox(self.editor, textvariable=self.device, state="readonly", width=64, height=10)
         self.device_combo.pack(fill="x", pady=(0, 6))
         row = ttk.Frame(self.editor, style="Panel.TFrame"); row.pack(fill="x")
         ttk.Button(row, text="Refresh", command=self._refresh_devices).pack(side="left")
@@ -439,7 +446,7 @@ class MacroPadApp:
     def _watch_controller(self):
         details = EvdevReader.device_details()
         matching = next((item for item in details
-                         if (item["vendor"], item["product"]) == PAD_USB_ID), None)
+                         if (item["vendor"], item["product"]) == PAD_USB_ID and item["key_capable"]), None)
         if matching and not self._was_connected:
             self._was_connected = True
             self._refresh_devices()
@@ -529,15 +536,27 @@ class MacroPadApp:
             self.profile = load_profile(path); self._refresh_deck(); self._load_assignment()
             self.status.set(f"Loaded profile {self.profile.get('name', 'Default')}.")
     def _refresh_devices(self):
-        found = EvdevReader.devices()
-        self.device_paths = {f"{name} — {path}": path for path, name in found}
+        found = [item for item in EvdevReader.device_details() if item["key_capable"]]
+        found.sort(key=lambda item: (0 if (item["vendor"], item["product"]) == PAD_USB_ID else 1,
+                                    item["name"].lower(), item["path"]))
+        self.device_paths = {}
+        for item in found:
+            event = Path(item["path"]).name
+            usb_id = f'{item["vendor"]:04x}:{item["product"]:04x}'
+            is_pad = (item["vendor"], item["product"]) == PAD_USB_ID
+            kind = "keys + axes" if item["axis_capable"] else "keys"
+            prefix = "★ THIS PAD" if is_pad else kind
+            label = f'{prefix} | {item["name"]} | USB {usb_id} | {event}'
+            self.device_paths[label] = item["path"]
         values = list(self.device_paths); self.device_combo.configure(values=values)
         active = next((label for label, path in self.device_paths.items()
                        if path == self.profile.get("input_device")), "")
         if active: self.device.set(active)
-        elif values: self.device.set(values[0])
+        elif values:
+            preferred = next((label for label in values if label.startswith("★ THIS PAD")), values[0])
+            self.device.set(preferred)
         else:
-            self.device.set(""); self.status.set("No evdev input found. Install evdev and check permissions.")
+            self.device.set(""); self.status.set("No keyboard-capable evdev input found. Install evdev and check permissions.")
     def _connect(self):
         path = self.device_paths.get(self.device.get(), "")
         if not path: self.status.set("Choose a detected device first."); return
