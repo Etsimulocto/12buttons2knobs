@@ -9,6 +9,7 @@ A Raspberry Pi control deck for the 12-button, 2-knob USB macro pad. The desktop
 - Supports launching a command or application, copying a file, or opening a web URL.
 - Includes on-screen controls so assignments can be tested before the physical pad is connected.
 - Reads Linux input events with evdev and has a learn mode to map physical controls to app controls.
+- Highlights physical presses on the on-screen deck and reports input events that still need a binding.
 - Offers Midnight, Light, and Graphite themes, five accent colors, resizable windows, and launch-size presets.
 - Installs a per-user login monitor on first launch; it opens and connects the deck when the verified controller is plugged in.
 - Stores the active profile in the current user's configuration folder.
@@ -49,7 +50,7 @@ Those are placeholders; replace them with the paths Skycam actually uses on the 
 
 ## Current status
 
-The visual deck, assignment editor, profile save/load, action runner, evdev learn mode, appearance settings, window sizing, and optional plug-triggered launch monitor are implemented. On the tested Raspberry Pi controller, the 12 buttons send keyboard keys A–L; the knobs emit number keys including 1, 3, 4, and 6. Learn mode records these input events. The exact knob-direction mapping still needs to be learned on the device.
+The visual deck, assignment editor, profile save/load, action runner, evdev learn mode, press highlighting, appearance settings, window sizing, and optional plug-triggered launch monitor are implemented. On the tested Raspberry Pi controller, the 12 buttons send keyboard keys A–L; the knobs emit number keys including 1, 3, 4, and 6. The A–L buttons light in the matching on-screen order. Learn mode records these input events. The exact knob-direction mapping still needs to be learned on the device.
 
 The profile supports 12 buttons plus six knob events: clockwise, counter-clockwise, and press for each knob. Actions run locally as the logged-in user. Command actions are split into arguments and do not use a shell; put multi-step commands in a script.
 
